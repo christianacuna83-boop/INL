@@ -23,14 +23,25 @@ if archivo:
             df.columns = df.iloc[0].fillna("Columna").astype(str)
             df = df.iloc[1:].reset_index(drop=True)
 
-        # Limpiar espacios en los nombres de las columnas
-        df.columns = [str(c).strip() for c in df.columns]
+        # Limpiar espacios en los nombres de las columnas y asegurar nombres únicos
+        nombres_limpios = [str(c).strip() for c in df.columns]
+        
+        # Evitar columnas duplicadas añadiendo un sufijo automático
+        columnas_unicas = []
+        contador = {}
+        for col in nombres_limpios:
+            if col in contador:
+                contador[col] += 1
+                columnas_unicas.append(f"{col}_{contador[col]}")
+            else:
+                contador[col] = 0
+                columnas_unicas.append(col)
+        df.columns = columnas_unicas
 
         st.sidebar.header("🔍 Filtros de Gestión")
 
-        # Filtros laterales automáticos según las columnas existentes
+        # Filtros laterales dinámicos
         df_filtrado = df.copy()
-
         filtros_posibles = ["Supervisor", "Empleado", "Periodo", "Cliente", "Estado", "Sistema"]
         for f in filtros_posibles:
             if f in df.columns:
