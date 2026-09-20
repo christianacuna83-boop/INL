@@ -87,32 +87,59 @@ if archivo:
 
         st.divider()
 
-        # --- SECCIÓN 2: DONA (ÚNICOS) Y TACÓMETRO (VELOCÍMETRO) ---
-        col_sup1, col_sup2 = st.columns([1, 1])
+        # --- SECCIÓN 2: DONAS (SECTOR Y RÉGIMEN TRIBUTARIO) Y VELOCÍMETRO ---
+        col_sup1, col_sup2, col_sup3 = st.columns([1, 1, 1.2])
 
-        # 1. DONA: Contar empresas únicas estrictamente por SECTOR
+        # 1. DONA: Sector (Empresas Únicas)
         with col_sup1:
             col_sector = next((c for c in df_filtrado.columns if c.strip().upper() == "SECTOR"), None)
             if not col_sector:
                 col_sector = next((c for c in df_filtrado.columns if "sector" in c.lower()), None)
 
             if col_sector and col_cli:
-                # Contar empresas únicas por Sector
-                df_unicos = df_filtrado[[col_cli, col_sector]].dropna().drop_duplicates(subset=[col_cli])
-                df_sec = df_unicos[col_sector].value_counts().reset_index()
+                df_unicos_sec = df_filtrado[[col_cli, col_sector]].dropna().drop_duplicates(subset=[col_cli])
+                df_sec = df_unicos_sec[col_sector].value_counts().reset_index()
                 df_sec.columns = ["Sector", "Cantidad"]
 
-                fig_dona = px.pie(
+                fig_dona_sec = px.pie(
                     df_sec, names="Sector", values="Cantidad",
-                    hole=0.55, title="Distribución por Sector (Empresas Únicas)",
+                    hole=0.55, title="<b>Distribución por Sector</b><br><span style='font-size:12px;color:gray'>Empresas Únicas</span>",
                     color_discrete_sequence=px.colors.qualitative.Pastel
                 )
-                fig_dona.update_traces(textinfo="label+value", textposition="outside")
-                fig_dona.update_layout(showlegend=False, margin=dict(t=50, b=30, l=30, r=30))
-                st.plotly_chart(fig_dona, use_container_width=True)
-                
-        # 2. TACÓMETRO / VELOCÍMETRO: Suma último (2026-08) / Puntaje requerido acumulado
+                fig_dona_sec.update_traces(textinfo="label+value", textposition="outside")
+                fig_dona_sec.update_layout(showlegend=False, margin=dict(t=50, b=20, l=20, r=20))
+                st.plotly_chart(fig_dona_sec, use_container_width=True)
+
+        # 2. DONA: Régimen Tributario (Empresas Únicas)
         with col_sup2:
+            # Busca columnas con nombres como Regimen, Tributario, Tipo Empresa, Sistema, etc.
+            col_regimen = next((c for c in df_filtrado.columns if any(k in c.lower() for k in ["regimen", "tribut", "tipo empresa", "clasificacion", "subsector"])), None)
+            
+            # Si no la encuentra con esos nombres, busca cualquier columna que contenga Mype, General, RER, etc.
+            if not col_regimen:
+                for c in df_filtrado.columns:
+                    if c not in [col_cli, col_sector]:
+                        valores_muestra = df_filtrado[c].astype(str).str.lower().unique().tolist()
+                        if any(r in " ".join(valores_muestra) for r in ["mype", "general", "rer", "agrario", "rus", "p. natural"]):
+                            col_regimen = c
+                            break
+
+            if col_regimen and col_cli:
+                df_unicos_reg = df_filtrado[[col_cli, col_regimen]].dropna().drop_duplicates(subset=[col_cli])
+                df_reg = df_unicos_reg[col_regimen].value_counts().reset_index()
+                df_reg.columns = ["Régimen", "Cantidad"]
+
+                fig_dona_reg = px.pie(
+                    df_reg, names="Régimen", values="Cantidad",
+                    hole=0.55, title="<b>Distribución por Régimen</b><br><span style='font-size:12px;color:gray'>Empresas Únicas</span>",
+                    color_discrete_sequence=px.colors.qualitative.Set3
+                )
+                fig_dona_reg.update_traces(textinfo="label+value", textposition="outside")
+                fig_dona_reg.update_layout(showlegend=False, margin=dict(t=50, b=20, l=20, r=20))
+                st.plotly_chart(fig_dona_reg, use_container_width=True)
+
+        # 3. VELOCÍMETRO: Grado de Avance Global
+        with col_sup3:
             if col_req and col_avance_mes and df_filtrado[col_req].sum() > 0:
                 total_alcanzado = df_filtrado[col_avance_mes].sum()
                 total_req = df_filtrado[col_req].sum()
@@ -122,7 +149,7 @@ if archivo:
                     mode="gauge+number",
                     value=round(porcentaje_global, 1),
                     number={'suffix': "%", 'font': {'size': 38}},
-                    title={'text': f"<b>Grado de Avance Global</b><br><span style='font-size:14px;color:gray'>{total_alcanzado:,.0f} de {total_req:,.0f} pts</span>"},
+                    title={'text': f"<b>Grado de Avance Global</b><br><span style='font-size:13px;color:gray'>{total_alcanzado:,.0f} de {total_req:,.0f} pts</span>"},
                     gauge={
                         'axis': {'range': [0, 100], 'tickwidth': 1},
                         'bar': {'color': "#0f172a", 'thickness': 0.25},
@@ -133,9 +160,9 @@ if archivo:
                         ],
                     }
                 ))
-                fig_gauge.update_layout(margin=dict(t=50, b=30, l=30, r=30), height=350)
+                fig_gauge.update_layout(margin=dict(t=50, b=20, l=20, r=20), height=350)
                 st.plotly_chart(fig_gauge, use_container_width=True)
-
+                
         st.divider()
 
         # --- SECCIÓN 3: BARRAS HORIZONTALES (ALCANZADO VS REQUERIDO) ---
