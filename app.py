@@ -9,7 +9,7 @@ st.title("📊 Panel de Control y Reportes de Gestión")
 # Selector de archivo
 archivo = st.file_uploader("Sube tu archivo de Excel (.xlsx, .xlsm) o CSV", type=["xlsx", "xlsm", "csv"])
 if not archivo:
-    archivo = "Estudio contable - Control de tareas 2026-06 Nuevo.xlsx"  # Pon aquí el nombre exacto de tu archivo en GitHub
+    archivo = "Control_ 2026_06.xlsx"  # Pon aquí el nombre exacto de tu archivo en GitHub
 
 if archivo:
     try:
