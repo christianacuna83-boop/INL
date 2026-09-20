@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -6,15 +7,23 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="Panel de Control - Grado de Avance", layout="wide")
 st.title("📊 Panel de Control y Reportes de Gestión")
 
-# Selector de archivo
-archivo = st.file_uploader("Sube tu archivo de Excel (.xlsx, .xlsm) o CSV", type=["xlsx", "xlsm", "csv"])
-if not archivo:
-    archivo = "Control_ 2026_08.xlsx"  # Pon aquí el nombre exacto de tu archivo en GitHub
+# Selector de archivo manual
+archivo_subido = st.file_uploader("Sube tu archivo de Excel (.xlsx, .xlsm) o CSV", type=["xlsx", "xlsm", "csv"])
 
-if archivo:
+archivo = archivo_subido
+# Si no se subió nada manualmente, revisa si hay un Excel en el repositorio de GitHub
+if archivo is None:
+    archivos_repo = [f for f in os.listdir(".") if f.endswith((".xlsx", ".xlsm", ".csv")) and not f.startswith("~$")]
+    if archivos_repo:
+        archivo = archivos_repo[0]
+
+if archivo is not None:
     try:
+        # Detectar el nombre del archivo de forma segura (sea texto o archivo subido)
+        nombre_archivo = archivo.name if hasattr(archivo, "name") else str(archivo)
+
         # Carga de hojas
-        if archivo.name.endswith((".xlsx", ".xlsm")):
+        if nombre_archivo.endswith((".xlsx", ".xlsm")):
             excel_file = pd.ExcelFile(archivo)
             hoja_defecto = "Formulario" if "Formulario" in excel_file.sheet_names else excel_file.sheet_names[0]
             hoja = st.sidebar.selectbox("📂 Hoja de trabajo:", excel_file.sheet_names, index=excel_file.sheet_names.index(hoja_defecto))
@@ -29,7 +38,7 @@ if archivo:
 
         df.columns = [str(c).strip() for c in df.columns]
 
-        # Manejo de nombres repetidos guardando orden original
+        # Manejo de columnas duplicadas
         columnas_unicas = []
         contador = {}
         for col in df.columns:
@@ -41,29 +50,32 @@ if archivo:
                 columnas_unicas.append(col)
         df.columns = columnas_unicas
 
-        # FILTRO OBLIGATORIO: Solo filas donde Reporte == 'Si' o 'SI'
+        # FILTRO PRINCIPAL: Solo filas donde Reporte == 'Si' o 'SI'
         col_rep = next((c for c in df.columns if c.lower().startswith("reporte")), None)
         if col_rep:
             df = df[df[col_rep].astype(str).str.strip().str.lower().isin(["si", "sí"])]
 
-        # Identificar la columna de avance: el último "2026-08" (o variantes generadas por duplicados)
-        cols_periodo = [c for c in df.columns if "2026-08" in c and not c.startswith("PO")]
+        # Identificar la columna de avance del mes (ej: 2026-08 o la última con formato de fecha)
+        cols_periodo = [c for c in df.columns if any(m in c for m in ["2026-", "2025-"]) and not c.startswith("PO")]
         col_avance_mes = cols_periodo[-1] if cols_periodo else None
 
-        # Identificar la columna requerida acumulada
+        # Identificar columna de puntaje requerido
         col_req = next((c for c in df.columns if "puntaje requerido acumulado" in c.lower()), None)
         if not col_req:
             col_req = next((c for c in df.columns if "puntaje requerido" in c.lower()), None)
 
-        # Convertir ambas a números
         if col_avance_mes:
             df[col_avance_mes] = pd.to_numeric(df[col_avance_mes], errors="coerce").fillna(0)
         if col_req:
             df[col_req] = pd.to_numeric(df[col_req], errors="coerce").fillna(0)
 
-        # Filtros laterales opcionales
+        # Filtros laterales de gestión
         st.sidebar.header("🔍 Filtros de Gestión")
         df_filtrado = df.copy()
+
+        col_cli = next((c for c in df.columns if c.lower() == "cliente"), None)
+        col_emp = next((c for c in df.columns if c.lower() == "empleado"), None)
+        col_sup = next((c for c in df.columns if c.lower() == "supervisor"), None)
 
         filtros_posibles = ["Supervisor", "Empleado", "Periodo", "Cliente", "Estado", "Sistema"]
         for f in filtros_posibles:
@@ -78,10 +90,6 @@ if archivo:
         st.subheader("📌 Indicadores Clave")
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
-        col_cli = next((c for c in df_filtrado.columns if c.lower() == "cliente"), None)
-        col_emp = next((c for c in df_filtrado.columns if c.lower() == "empleado"), None)
-        col_sup = next((c for c in df_filtrado.columns if c.lower() == "supervisor"), None)
-
         kpi1.metric("Total Tareas / Registros", f"{len(df_filtrado):,}")
         kpi2.metric("Clientes Únicos", df_filtrado[col_cli].nunique() if col_cli else "-")
         kpi3.metric("Personal Asignado", df_filtrado[col_emp].nunique() if col_emp else "-")
@@ -89,10 +97,9 @@ if archivo:
 
         st.divider()
 
-        # --- SECCIÓN 2: DONAS (SECTOR Y RÉGIMEN TRIBUTARIO) Y VELOCÍMETRO ---
+        # --- SECCIÓN 2: DONAS Y VELOCÍMETRO ---
         col_sup1, col_sup2, col_sup3 = st.columns([1, 1, 1.2])
 
-        # 1. DONA: Sector (Empresas Únicas)
         with col_sup1:
             col_sector = next((c for c in df_filtrado.columns if c.strip().upper() == "SECTOR"), None)
             if not col_sector:
@@ -112,17 +119,13 @@ if archivo:
                 fig_dona_sec.update_layout(showlegend=False, margin=dict(t=50, b=20, l=20, r=20))
                 st.plotly_chart(fig_dona_sec, use_container_width=True)
 
-        # 2. DONA: Régimen Tributario (Empresas Únicas)
         with col_sup2:
-            # Busca columnas con nombres como Regimen, Tributario, Tipo Empresa, Sistema, etc.
             col_regimen = next((c for c in df_filtrado.columns if any(k in c.lower() for k in ["regimen", "tribut", "tipo empresa", "clasificacion", "subsector"])), None)
-            
-            # Si no la encuentra con esos nombres, busca cualquier columna que contenga Mype, General, RER, etc.
             if not col_regimen:
                 for c in df_filtrado.columns:
                     if c not in [col_cli, col_sector]:
-                        valores_muestra = df_filtrado[c].astype(str).str.lower().unique().tolist()
-                        if any(r in " ".join(valores_muestra) for r in ["mype", "general", "rer", "agrario", "rus", "p. natural"]):
+                        valores_m = df_filtrado[c].astype(str).str.lower().unique().tolist()
+                        if any(r in " ".join(valores_m) for r in ["mype", "general", "rer", "agrario", "rus", "p. natural"]):
                             col_regimen = c
                             break
 
@@ -140,7 +143,6 @@ if archivo:
                 fig_dona_reg.update_layout(showlegend=False, margin=dict(t=50, b=20, l=20, r=20))
                 st.plotly_chart(fig_dona_reg, use_container_width=True)
 
-        # 3. VELOCÍMETRO: Grado de Avance Global
         with col_sup3:
             if col_req and col_avance_mes and df_filtrado[col_req].sum() > 0:
                 total_alcanzado = df_filtrado[col_avance_mes].sum()
@@ -156,18 +158,18 @@ if archivo:
                         'axis': {'range': [0, 100], 'tickwidth': 1},
                         'bar': {'color': "#0f172a", 'thickness': 0.25},
                         'steps': [
-                            {'range': [0, 60], 'color': '#ef4444'},     # Rojo
-                            {'range': [60, 80], 'color': '#facc15'},    # Amarillo
-                            {'range': [80, 100], 'color': '#22c55e'}    # Verde
+                            {'range': [0, 60], 'color': '#ef4444'},
+                            {'range': [60, 80], 'color': '#facc15'},
+                            {'range': [80, 100], 'color': '#22c55e'}
                         ],
                     }
                 ))
                 fig_gauge.update_layout(margin=dict(t=50, b=20, l=20, r=20), height=350)
                 st.plotly_chart(fig_gauge, use_container_width=True)
-                
+
         st.divider()
 
-        # --- SECCIÓN 3: BARRAS HORIZONTALES (ALCANZADO VS REQUERIDO) ---
+        # --- SECCIÓN 3: BARRAS HORIZONTALES ---
         def graficar_barras_avance(grupo_col, titulo):
             if not grupo_col or grupo_col not in df_filtrado.columns or not col_req or not col_avance_mes:
                 return None
@@ -176,7 +178,6 @@ if archivo:
             resumen = resumen.sort_values(by=col_avance_mes, ascending=True)
 
             fig = go.Figure()
-            # Barra Requerido (fondo naranja)
             fig.add_trace(go.Bar(
                 y=resumen[grupo_col],
                 x=resumen[col_req],
@@ -185,7 +186,6 @@ if archivo:
                 marker_color='#ea580c',
                 opacity=0.85
             ))
-            # Barra Alcanzado (frente celeste)
             fig.add_trace(go.Bar(
                 y=resumen[grupo_col],
                 x=resumen[col_avance_mes],
@@ -231,4 +231,4 @@ if archivo:
     except Exception as e:
         st.error(f"Error procesando la información: {e}")
 else:
-    st.info("Por favor, sube tu archivo para generar el panel de control.")
+    st.info("Por favor, sube tu archivo de Excel o CSV en el recuadro superior para visualizar el dashboard.")
