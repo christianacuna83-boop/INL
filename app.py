@@ -90,24 +90,27 @@ if archivo:
         # --- SECCIÓN 2: DONA (ÚNICOS) Y TACÓMETRO (VELOCÍMETRO) ---
         col_sup1, col_sup2 = st.columns([1, 1])
 
-        # 1. DONA: Contar solo empresas únicas por Sector / Régimen
+        # 1. DONA: Contar empresas únicas estrictamente por SECTOR
         with col_sup1:
-            col_sector = next((c for c in df_filtrado.columns if c.lower() in ["sistema", "regimen", "sector"]), None)
+            col_sector = next((c for c in df_filtrado.columns if c.strip().upper() == "SECTOR"), None)
+            if not col_sector:
+                col_sector = next((c for c in df_filtrado.columns if "sector" in c.lower()), None)
+
             if col_sector and col_cli:
-                # Nos quedamos con un solo registro por cliente para contar clientes únicos
+                # Contar empresas únicas por Sector
                 df_unicos = df_filtrado[[col_cli, col_sector]].dropna().drop_duplicates(subset=[col_cli])
                 df_sec = df_unicos[col_sector].value_counts().reset_index()
                 df_sec.columns = ["Sector", "Cantidad"]
 
                 fig_dona = px.pie(
                     df_sec, names="Sector", values="Cantidad",
-                    hole=0.55, title="Distribución por Régimen / Sector (Empresas Únicas)",
-                    color_discrete_sequence=px.colors.qualitative.Set2
+                    hole=0.55, title="Distribución por Sector (Empresas Únicas)",
+                    color_discrete_sequence=px.colors.qualitative.Pastel
                 )
                 fig_dona.update_traces(textinfo="label+value", textposition="outside")
                 fig_dona.update_layout(showlegend=False, margin=dict(t=50, b=30, l=30, r=30))
                 st.plotly_chart(fig_dona, use_container_width=True)
-
+                
         # 2. TACÓMETRO / VELOCÍMETRO: Suma último (2026-08) / Puntaje requerido acumulado
         with col_sup2:
             if col_req and col_avance_mes and df_filtrado[col_req].sum() > 0:
